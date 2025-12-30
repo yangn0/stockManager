@@ -1,10 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, session
+from functools import wraps
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from datetime import datetime
 from urllib.parse import quote
 import database
+from secret import USERNAME,PASSWORD
 
 app = Flask(__name__)
 app.secret_key = 'stock_manager_secret_key'
@@ -12,7 +14,42 @@ app.secret_key = 'stock_manager_secret_key'
 CATEGORIES = ['耐克衣服', '耐克鞋子', '耐克配件', '阿迪衣服', '阿迪鞋子', '阿迪配件', '李宁衣服', '李宁鞋子', '李宁配件']
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """登录页面"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        if username == USERNAME and password == PASSWORD:
+            session['logged_in'] = True
+            flash('登录成功！', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('用户名或密码错误！', 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """登出"""
+    session.pop('logged_in', None)
+    flash('已退出登录！', 'success')
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def index():
     """首页 - 库存展示"""
     category = request.args.get('category', 'all')
@@ -26,6 +63,7 @@ def index():
 
 
 @app.route('/stock_in', methods=['GET', 'POST'])
+@login_required
 def stock_in():
     """入库页面"""
     if request.method == 'POST':
@@ -43,6 +81,7 @@ def stock_in():
 
 
 @app.route('/stock_out', methods=['GET', 'POST'])
+@login_required
 def stock_out():
     """出库页面"""
     search_results = []
@@ -57,6 +96,7 @@ def stock_out():
 
 
 @app.route('/do_stock_out', methods=['POST'])
+@login_required
 def do_stock_out():
     """执行出库操作"""
     item_id = int(request.form.get('item_id'))
@@ -74,6 +114,7 @@ def do_stock_out():
 
 
 @app.route('/records')
+@login_required
 def records():
     """出入库记录"""
     stock_in_records = database.get_stock_in_records()
@@ -84,6 +125,7 @@ def records():
 
 
 @app.route('/monthly')
+@login_required
 def monthly():
     """月度汇总"""
     summary = database.get_monthly_summary()
@@ -91,6 +133,7 @@ def monthly():
 
 
 @app.route('/api/item/<int:item_id>')
+@login_required
 def get_item(item_id):
     """获取库存项详情API"""
     item = database.get_inventory_item(item_id)
@@ -107,6 +150,7 @@ def get_item(item_id):
 
 
 @app.route('/yearly')
+@login_required
 def yearly():
     """年度汇总"""
     summary = database.get_yearly_summary()
@@ -128,6 +172,7 @@ def create_excel_style():
 
 
 @app.route('/export/inventory')
+@login_required
 def export_inventory():
     """导出当前库存为Excel"""
     category = request.args.get('category', 'all')
@@ -185,6 +230,7 @@ def export_inventory():
 
 
 @app.route('/export/stock_in')
+@login_required
 def export_stock_in():
     """导出入库记录为Excel"""
     records = database.get_stock_in_records()
@@ -234,6 +280,7 @@ def export_stock_in():
 
 
 @app.route('/export/stock_out')
+@login_required
 def export_stock_out():
     """导出出库记录为Excel"""
     records = database.get_stock_out_records()
@@ -288,6 +335,7 @@ def export_stock_out():
 
 
 @app.route('/export/monthly')
+@login_required
 def export_monthly():
     """导出月度汇总为Excel"""
     summary = database.get_monthly_summary()
@@ -357,6 +405,7 @@ def export_monthly():
 
 
 @app.route('/export/yearly')
+@login_required
 def export_yearly():
     """导出年度汇总为Excel"""
     summary = database.get_yearly_summary()
