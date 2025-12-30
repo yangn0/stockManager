@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}入库 - 老王的库存管理系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">商品入库</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('stock_in') }}">
+                    <div class="mb-3">
+                        <label for="category" class="form-label">类别 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="category" name="category" required>
+                            <option value="">请选择类别</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="product_code" class="form-label">货号 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="product_code" name="product_code"
+                               placeholder="例如: ABC123" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="size" class="form-label">尺码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="size" name="size"
+                               placeholder="例如: M / 42 / 均码" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="purchase_price" class="form-label">进货价 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="purchase_price" name="purchase_price"
+                                   step="0.01" min="0" placeholder="0.00" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">数量 <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="quantity" name="quantity"
+                               min="1" value="1" required>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">确认入库</button>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">返回库存</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

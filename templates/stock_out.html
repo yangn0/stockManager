@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}出库 - 老王的库存管理系统{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">商品出库</h2>
+
+<div class="card mb-4">
+    <div class="card-header">搜索货号</div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('stock_out') }}" class="row g-3">
+            <div class="col-md-8">
+                <input type="text" class="form-control" name="search" value="{{ search_code }}"
+                       placeholder="输入货号进行搜索...">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">搜索</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if search_code %}
+<div class="card">
+    <div class="card-header">
+        搜索结果：{{ search_code }}
+        <span class="badge bg-secondary">{{ search_results|length }} 条</span>
+    </div>
+    <div class="card-body">
+        {% if search_results %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>类别</th>
+                        <th>货号</th>
+                        <th>尺码</th>
+                        <th>进货价</th>
+                        <th>库存</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in search_results %}
+                    <tr>
+                        <td>
+                            <span class="badge
+                                {% if item.category == '衣服' %}bg-info
+                                {% elif item.category == '鞋子' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ item.category }}
+                            </span>
+                        </td>
+                        <td><strong>{{ item.product_code }}</strong></td>
+                        <td>{{ item.size }}</td>
+                        <td>¥{{ "%.2f"|format(item.purchase_price) }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>
+                            <button type="button" class="btn btn-success btn-sm"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#sellModal"
+                                    data-id="{{ item.id }}"
+                                    data-code="{{ item.product_code }}"
+                                    data-size="{{ item.size }}"
+                                    data-price="{{ item.purchase_price }}"
+                                    data-qty="{{ item.quantity }}">
+                                出库
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+            <p>未找到货号包含 "{{ search_code }}" 的商品</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- 出库弹窗 -->
+<div class="modal fade" id="sellModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认出库</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('do_stock_out') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="item_id" id="modal_item_id">
+
+                    <div class="mb-3">
+                        <label class="form-label">商品信息</label>
+                        <p class="form-control-plaintext">
+                            <strong id="modal_code"></strong> - 尺码: <span id="modal_size"></span>
+                        </p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">进货价</label>
+                        <p class="form-control-plaintext">¥<span id="modal_price"></span></p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">可用库存</label>
+                        <p class="form-control-plaintext"><span id="modal_qty"></span> 件</p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="sell_price" class="form-label">卖出价 <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">¥</span>
+                            <input type="number" class="form-control" id="sell_price" name="sell_price"
+                                   step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">出库数量 <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="sell_quantity" name="quantity"
+                               min="1" value="1" required>
+                    </div>
+
+                    <div class="alert alert-info" id="profit_preview">
+                        预计利润: ¥<span id="profit_value">0.00</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">确认出库</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var sellModal = document.getElementById('sellModal');
+    var purchasePrice = 0;
+    var maxQty = 0;
+
+    sellModal.addEventListener('show.bs.modal', function(event) {
+        var button = event.relatedTarget;
+        document.getElementById('modal_item_id').value = button.dataset.id;
+        document.getElementById('modal_code').textContent = button.dataset.code;
+        document.getElementById('modal_size').textContent = button.dataset.size;
+        document.getElementById('modal_price').textContent = button.dataset.price;
+        document.getElementById('modal_qty').textContent = button.dataset.qty;
+
+        purchasePrice = parseFloat(button.dataset.price);
+        maxQty = parseInt(button.dataset.qty);
+
+        document.getElementById('sell_quantity').max = maxQty;
+        document.getElementById('sell_price').value = '';
+        document.getElementById('sell_quantity').value = 1;
+        updateProfit();
+    });
+
+    function updateProfit() {
+        var sellPrice = parseFloat(document.getElementById('sell_price').value) || 0;
+        var quantity = parseInt(document.getElementById('sell_quantity').value) || 1;
+        var profit = (sellPrice - purchasePrice) * quantity;
+
+        var profitEl = document.getElementById('profit_value');
+        var alertEl = document.getElementById('profit_preview');
+
+        profitEl.textContent = profit.toFixed(2);
+
+        if (profit >= 0) {
+            alertEl.className = 'alert alert-success';
+        } else {
+            alertEl.className = 'alert alert-danger';
+        }
+    }
+
+    document.getElementById('sell_price').addEventListener('input', updateProfit);
+    document.getElementById('sell_quantity').addEventListener('input', updateProfit);
+});
+</script>
+{% endblock %}
