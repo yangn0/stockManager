@@ -113,6 +113,24 @@ def do_stock_out():
     return redirect(url_for('stock_out'))
 
 
+@app.route('/delete_inventory', methods=['POST'])
+@login_required
+def delete_inventory():
+    """删除库存"""
+    item_id = int(request.form.get('item_id'))
+    quantity = int(request.form.get('quantity'))
+    category = request.form.get('category', 'all')
+
+    success, message = database.delete_inventory(item_id, quantity)
+
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'error')
+
+    return redirect(url_for('index', category=category))
+
+
 @app.route('/records')
 @login_required
 def records():

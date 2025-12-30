@@ -236,3 +236,31 @@ def get_yearly_summary():
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+
+def delete_inventory(item_id, quantity):
+    """删除库存（直接减少数量，不记录出库）"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 获取库存信息
+    cursor.execute('SELECT * FROM inventory WHERE id = ?', (item_id,))
+    item = cursor.fetchone()
+
+    if not item:
+        conn.close()
+        return False, '库存项不存在'
+
+    if item['quantity'] < quantity:
+        conn.close()
+        return False, '删除数量不能大于当前库存数量'
+
+    # 更新库存
+    new_quantity = item['quantity'] - quantity
+    cursor.execute('''
+        UPDATE inventory SET quantity = ? WHERE id = ?
+    ''', (new_quantity, item_id))
+
+    conn.commit()
+    conn.close()
+    return True, f'成功删除 {quantity} 件商品'
