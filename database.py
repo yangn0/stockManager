@@ -214,3 +214,25 @@ def get_monthly_summary():
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+
+def get_yearly_summary():
+    """获取年度汇总"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT
+            strftime('%Y', created_at) as year,
+            SUM(sell_price * quantity) as revenue,
+            SUM(purchase_price * quantity) as cost,
+            SUM(profit) as total_profit,
+            SUM(quantity) as total_quantity
+        FROM stock_out
+        GROUP BY strftime('%Y', created_at)
+        ORDER BY year DESC
+    ''')
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows

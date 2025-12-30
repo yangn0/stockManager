@@ -1,10 +1,15 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from datetime import datetime
+from urllib.parse import quote
 import database
 
 app = Flask(__name__)
 app.secret_key = 'stock_manager_secret_key'
 
-CATEGORIES = ['衣服', '鞋子', '配件']
+CATEGORIES = ['耐克衣服', '耐克鞋子', '耐克配件', '阿迪衣服', '阿迪鞋子', '阿迪配件', '李宁衣服', '李宁鞋子', '李宁配件']
 
 
 @app.route('/')
@@ -99,6 +104,325 @@ def get_item(item_id):
             'quantity': item['quantity']
         })
     return jsonify({'error': '未找到'}), 404
+
+
+@app.route('/yearly')
+def yearly():
+    """年度汇总"""
+    summary = database.get_yearly_summary()
+    return render_template('yearly.html', summary=summary)
+
+
+def create_excel_style():
+    """创建Excel样式"""
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+    header_alignment = Alignment(horizontal='center', vertical='center')
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    return header_font, header_fill, header_alignment, thin_border
+
+
+@app.route('/export/inventory')
+def export_inventory():
+    """导出当前库存为Excel"""
+    category = request.args.get('category', 'all')
+    inventory = database.get_inventory(category)
+    total_value = database.get_total_value()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "当前库存"
+
+    header_font, header_fill, header_alignment, thin_border = create_excel_style()
+
+    # 标题行
+    headers = ['类别', '货号', '尺码', '进货价', '数量', '货值']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # 数据行
+    for row_idx, item in enumerate(inventory, 2):
+        ws.cell(row=row_idx, column=1, value=item['category']).border = thin_border
+        ws.cell(row=row_idx, column=2, value=item['product_code']).border = thin_border
+        ws.cell(row=row_idx, column=3, value=item['size']).border = thin_border
+        ws.cell(row=row_idx, column=4, value=item['purchase_price']).border = thin_border
+        ws.cell(row=row_idx, column=5, value=item['quantity']).border = thin_border
+        ws.cell(row=row_idx, column=6, value=item['purchase_price'] * item['quantity']).border = thin_border
+
+    # 合计行
+    last_row = len(inventory) + 2
+    ws.cell(row=last_row, column=5, value='总货值:').font = Font(bold=True)
+    ws.cell(row=last_row, column=6, value=total_value).font = Font(bold=True)
+
+    # 调整列宽
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 10
+    ws.column_dimensions['D'].width = 12
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"库存_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+
+@app.route('/export/stock_in')
+def export_stock_in():
+    """导出入库记录为Excel"""
+    records = database.get_stock_in_records()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "入库记录"
+
+    header_font, header_fill, header_alignment, thin_border = create_excel_style()
+
+    headers = ['时间', '类别', '货号', '尺码', '进货价', '数量', '金额']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    for row_idx, record in enumerate(records, 2):
+        ws.cell(row=row_idx, column=1, value=record['created_at']).border = thin_border
+        ws.cell(row=row_idx, column=2, value=record['category']).border = thin_border
+        ws.cell(row=row_idx, column=3, value=record['product_code']).border = thin_border
+        ws.cell(row=row_idx, column=4, value=record['size']).border = thin_border
+        ws.cell(row=row_idx, column=5, value=record['purchase_price']).border = thin_border
+        ws.cell(row=row_idx, column=6, value=record['quantity']).border = thin_border
+        ws.cell(row=row_idx, column=7, value=record['purchase_price'] * record['quantity']).border = thin_border
+
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 10
+    ws.column_dimensions['G'].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"入库记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+
+@app.route('/export/stock_out')
+def export_stock_out():
+    """导出出库记录为Excel"""
+    records = database.get_stock_out_records()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "出库记录"
+
+    header_font, header_fill, header_alignment, thin_border = create_excel_style()
+
+    headers = ['时间', '类别', '货号', '尺码', '进货价', '卖出价', '数量', '利润']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    for row_idx, record in enumerate(records, 2):
+        ws.cell(row=row_idx, column=1, value=record['created_at']).border = thin_border
+        ws.cell(row=row_idx, column=2, value=record['category']).border = thin_border
+        ws.cell(row=row_idx, column=3, value=record['product_code']).border = thin_border
+        ws.cell(row=row_idx, column=4, value=record['size']).border = thin_border
+        ws.cell(row=row_idx, column=5, value=record['purchase_price']).border = thin_border
+        ws.cell(row=row_idx, column=6, value=record['sell_price']).border = thin_border
+        ws.cell(row=row_idx, column=7, value=record['quantity']).border = thin_border
+        profit_cell = ws.cell(row=row_idx, column=8, value=record['profit'])
+        profit_cell.border = thin_border
+        if record['profit'] < 0:
+            profit_cell.font = Font(color='FF0000')
+
+    ws.column_dimensions['A'].width = 20
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 12
+    ws.column_dimensions['F'].width = 12
+    ws.column_dimensions['G'].width = 10
+    ws.column_dimensions['H'].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"出库记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+
+@app.route('/export/monthly')
+def export_monthly():
+    """导出月度汇总为Excel"""
+    summary = database.get_monthly_summary()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "月度汇总"
+
+    header_font, header_fill, header_alignment, thin_border = create_excel_style()
+
+    headers = ['月份', '销售额', '成本', '利润', '销量', '利润率']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_quantity = 0
+
+    for row_idx, record in enumerate(summary, 2):
+        ws.cell(row=row_idx, column=1, value=record['month']).border = thin_border
+        ws.cell(row=row_idx, column=2, value=record['revenue']).border = thin_border
+        ws.cell(row=row_idx, column=3, value=record['cost']).border = thin_border
+        profit_cell = ws.cell(row=row_idx, column=4, value=record['total_profit'])
+        profit_cell.border = thin_border
+        if record['total_profit'] < 0:
+            profit_cell.font = Font(color='FF0000')
+        ws.cell(row=row_idx, column=5, value=record['total_quantity']).border = thin_border
+        profit_rate = (record['total_profit'] / record['cost'] * 100) if record['cost'] else 0
+        ws.cell(row=row_idx, column=6, value=f"{profit_rate:.1f}%").border = thin_border
+
+        total_revenue += record['revenue'] or 0
+        total_cost += record['cost'] or 0
+        total_profit += record['total_profit'] or 0
+        total_quantity += record['total_quantity'] or 0
+
+    # 合计行
+    last_row = len(summary) + 2
+    ws.cell(row=last_row, column=1, value='合计').font = Font(bold=True)
+    ws.cell(row=last_row, column=2, value=total_revenue).font = Font(bold=True)
+    ws.cell(row=last_row, column=3, value=total_cost).font = Font(bold=True)
+    ws.cell(row=last_row, column=4, value=total_profit).font = Font(bold=True)
+    ws.cell(row=last_row, column=5, value=total_quantity).font = Font(bold=True)
+
+    ws.column_dimensions['A'].width = 12
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"月度汇总_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+
+@app.route('/export/yearly')
+def export_yearly():
+    """导出年度汇总为Excel"""
+    summary = database.get_yearly_summary()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "年度汇总"
+
+    header_font, header_fill, header_alignment, thin_border = create_excel_style()
+
+    headers = ['年份', '销售额', '成本', '利润', '销量', '利润率']
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_quantity = 0
+
+    for row_idx, record in enumerate(summary, 2):
+        ws.cell(row=row_idx, column=1, value=record['year']).border = thin_border
+        ws.cell(row=row_idx, column=2, value=record['revenue']).border = thin_border
+        ws.cell(row=row_idx, column=3, value=record['cost']).border = thin_border
+        profit_cell = ws.cell(row=row_idx, column=4, value=record['total_profit'])
+        profit_cell.border = thin_border
+        if record['total_profit'] < 0:
+            profit_cell.font = Font(color='FF0000')
+        ws.cell(row=row_idx, column=5, value=record['total_quantity']).border = thin_border
+        profit_rate = (record['total_profit'] / record['cost'] * 100) if record['cost'] else 0
+        ws.cell(row=row_idx, column=6, value=f"{profit_rate:.1f}%").border = thin_border
+
+        total_revenue += record['revenue'] or 0
+        total_cost += record['cost'] or 0
+        total_profit += record['total_profit'] or 0
+        total_quantity += record['total_quantity'] or 0
+
+    # 合计行
+    last_row = len(summary) + 2
+    ws.cell(row=last_row, column=1, value='合计').font = Font(bold=True)
+    ws.cell(row=last_row, column=2, value=total_revenue).font = Font(bold=True)
+    ws.cell(row=last_row, column=3, value=total_cost).font = Font(bold=True)
+    ws.cell(row=last_row, column=4, value=total_profit).font = Font(bold=True)
+    ws.cell(row=last_row, column=5, value=total_quantity).font = Font(bold=True)
+
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 12
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"年度汇总_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    encoded_filename = quote(filename)
+    return Response(
+        output.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
 
 
 if __name__ == '__main__':
