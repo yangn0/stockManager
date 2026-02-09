@@ -238,6 +238,48 @@ def get_yearly_summary():
     return rows
 
 
+def delete_stock_out_record(record_id):
+    """删除出库记录并恢复库存"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # 获取出库记录信息
+    cursor.execute('SELECT * FROM stock_out WHERE id = ?', (record_id,))
+    record = cursor.fetchone()
+
+    if not record:
+        conn.close()
+        return False, '出库记录不存在'
+
+    # 恢复库存
+    # 查找对应的库存项
+    cursor.execute('''
+        SELECT id FROM inventory
+        WHERE product_code = ? AND size = ? AND purchase_price = ?
+    ''', (record['product_code'], record['size'], record['purchase_price']))
+    inventory_item = cursor.fetchone()
+
+    if inventory_item:
+        # 存在库存项，增加数量
+        cursor.execute('''
+            UPDATE inventory SET quantity = quantity + ? WHERE id = ?
+        ''', (record['quantity'], inventory_item['id']))
+    else:
+        # 不存在库存项，创建新的库存项
+        cursor.execute('''
+            INSERT INTO inventory (category, product_code, size, purchase_price, quantity)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (record['category'], record['product_code'], record['size'],
+              record['purchase_price'], record['quantity']))
+
+    # 删除出库记录
+    cursor.execute('DELETE FROM stock_out WHERE id = ?', (record_id,))
+
+    conn.commit()
+    conn.close()
+    return True, f'成功删除出库记录并恢复库存 {record["quantity"]} 件'
+
+
 def delete_inventory(item_id, quantity):
     """删除库存（直接减少数量，不记录出库）"""
     conn = get_db()

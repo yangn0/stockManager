@@ -106,6 +106,7 @@
                                 <th>卖出价</th>
                                 <th>数量</th>
                                 <th>利润</th>
+                                <th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -129,6 +130,12 @@
                                 <td class="{% if record.profit >= 0 %}profit-positive{% else %}profit-negative{% endif %}">
                                     {% if record.profit >= 0 %}+{% endif %}¥{{ "%.2f"|format(record.profit) }}
                                 </td>
+                                <td>
+                                    <button type="button" class="btn btn-danger btn-sm"
+                                            onclick="showDeleteModal({{ record.id }}, '{{ record.product_code }}', '{{ record.size }}', {{ record.quantity }})">
+                                        删除
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -143,4 +150,40 @@
         </div>
     </div>
 </div>
+
+<!-- 删除出库记录确认模态框 -->
+<div class="modal fade" id="deleteStockOutModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认删除出库记录</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('delete_stock_out') }}">
+                <div class="modal-body">
+                    <input type="hidden" name="record_id" id="delete_record_id">
+                    <p>确定要删除这条出库记录吗？</p>
+                    <p><strong id="delete_item_info"></strong></p>
+                    <div class="alert alert-warning">
+                        <strong>注意：</strong>删除出库记录后，对应的库存将会恢复。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认删除</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showDeleteModal(recordId, productCode, size, quantity) {
+    document.getElementById('delete_record_id').value = recordId;
+    document.getElementById('delete_item_info').textContent =
+        `货号: ${productCode}, 尺码: ${size}, 数量: ${quantity} 件`;
+    const modal = new bootstrap.Modal(document.getElementById('deleteStockOutModal'));
+    modal.show();
+}
+</script>
 {% endblock %}
